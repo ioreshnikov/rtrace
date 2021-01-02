@@ -1,7 +1,9 @@
 use std::ops::Add;
 use std::ops::Div;
 use std::ops::Mul;
+use std::ops::Sub;
 
+/// Basic vector arithmetics.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Vector {
     pub x: f32,
@@ -35,6 +37,30 @@ impl Add<Vector> for Vector {
             x: self.x + other.x,
             y: self.y + other.y,
             z: self.z + other.z
+        }
+    }
+}
+
+impl Add<f32> for Vector {
+    type Output = Self;
+
+    fn add(self, other: f32) -> Self {
+        Self {
+            x: self.x + other,
+            y: self.y + other,
+            z: self.z + other
+        }
+    }
+}
+
+impl Add<Vector> for f32 {
+    type Output = Vector;
+
+    fn add(self, other: Vector) -> Vector {
+        Vector {
+            x: self + other.x,
+            y: self + other.y,
+            z: self + other.z
         }
     }
 }
@@ -75,6 +101,19 @@ impl Mul<f32> for Vector {
     }
 }
 
+impl Sub<Vector> for Vector {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self {
+        Self {
+            x: self.x - other.x,
+            y: self.y - other.y,
+            z: self.z - other.z
+        }
+    }
+}
+
+/// Minimal ray abstraction.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Ray {
     pub origin: Vector,
@@ -88,20 +127,103 @@ impl Ray {
             direction: direction.unit()
         }
     }
+
+    pub fn at(self, t: f32) -> Vector {
+        self.origin + t * self.direction
+    }
 }
+
+/// Geometry
+pub struct Hit {
+    pub t: f32,    // Distance along the ray to the intersection with the shape
+    pub p: Vector, // Cartesian coordinates of the intersection
+    pub n: Vector, // Outer surface normal at the intersection
+}
+
+impl Hit {
+    pub fn new(t: f32, p: Vector, n: Vector) -> Self {
+        Self {
+            t: t,
+            p: p,
+            n: n.unit()
+        }
+    }
+}
+
+pub trait Hittable {
+    fn hit(self, ray: &Ray) -> Option<Hit>;
+}
+
+pub struct Sphere {
+    pub center: Vector,
+    pub radius: f32
+}
+
+impl Hittable for Sphere {
+    fn hit(self, ray: &Ray) -> Option<Hit> {
+        let o = ray.origin - self.center;
+        let b = ray.direction.dot(&o);
+        let c = o.sqnorm() - self.radius * self.radius;
+        let discriminant = b * b - c;
+
+        if discriminant < 0.0 {
+            return None;
+        }
+
+        let d = discriminant.sqrt();
+
+        let t1 = - b + d;
+        let t2 = - b - d;
+
+        if t1 < 0.0 && t2 < 0.0 {
+            return None;
+        }
+
+        let t: f32 = match (t1 > 0.0, t2 > 0.0) {
+            (false, true) => t2,
+            (true, false) => t1,
+            (true, true)  => t1.min(t2),
+            _ => unreachable!()
+        };
+
+        let p = ray.at(t);
+        let n = p - SPHERE.center;
+
+        Some(Hit::new(t, p, n))
+    }
+}
+
+// An example sphere.
+const SPHERE: Sphere = Sphere {
+    center: Vector {x: 0.0, y: 0.0, z: -1.0},
+    radius: 0.5
+};
 
 type Color = Vector;
 
-pub fn ray_color(ray: &Ray) -> Color {
+/// Ray tracing algorithm.
+pub fn background_color(ray: &Ray) -> Color {
     let y = ray.direction.y;
     let t = 0.5 * (y + 1.0);
     let blue  = Color {x: 0.5, y: 0.7, z: 1.0};
     let white = Color {x: 1.0, y: 1.0, z: 1.0};
-    return t * white + (1.0 - t) * blue;
+
+    t * white + (1.0 - t) * blue
 }
 
-const WINDOW_WIDTH:  u32 = 600;
-const WINDOW_HEIGHT: u32 = 600;
+pub fn ray_color(ray: &Ray) -> Color {
+    let hit = SPHERE.hit(ray);
+
+    if !hit.is_none() {
+        return 0.5 * (hit.unwrap().n + 1.0);
+    }
+
+    background_color(ray)
+}
+
+/// Window and viewport related setup.
+const WINDOW_WIDTH:  u32 = 800;
+const WINDOW_HEIGHT: u32 = 800;
 
 const ASPECT_RATIO: f32 = WINDOW_WIDTH as f32 / WINDOW_HEIGHT as f32;
 
@@ -109,11 +231,13 @@ const VIEWPORT_WIDTH: f32 = 2.0;
 const VIEWPORT_HEIGHT: f32 = VIEWPORT_WIDTH / ASPECT_RATIO;
 const VIEWPORT_FOCUS_DISTANCE: f32 = 1.0;
 
+/// Basic geometric constants.
 const OG: Vector = Vector{x: 0.0, y: 0.0, z: 0.0};
 const EX: Vector = Vector{x: 1.0, y: 0.0, z: 0.0};
 const EY: Vector = Vector{x: 0.0, y: 1.0, z: 0.0};
 const EZ: Vector = Vector{x: 0.0, y: 0.0, z: 1.0};
 
+/// Auxiliary functions.
 use sdl2;
 
 impl Color {
@@ -127,6 +251,7 @@ impl Color {
 }
 
 fn main() {
+    // Initialize the window.
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
@@ -140,6 +265,7 @@ fn main() {
         .build()
         .unwrap();
 
+    // For each pixel.
     for i in 0 .. WINDOW_HEIGHT {
         for j in 0 .. WINDOW_WIDTH {
             // Calculate coordinates of the point relative to the
@@ -150,7 +276,12 @@ fn main() {
             let x = (u - 0.5) * VIEWPORT_WIDTH;
             let y = (v - 0.5) * VIEWPORT_HEIGHT;
 
-            let ray = Ray::new(OG, x * EX + y * EY + VIEWPORT_FOCUS_DISTANCE * EZ);
+            // Construct a ray going through the point on the
+            // viewport.
+            let ray = Ray::new(OG, x * EX + y * EY - VIEWPORT_FOCUS_DISTANCE * EZ - OG);
+
+            // Perform ray tracing and see what color the ray should
+            // be.
             let color = ray_color(&ray);
 
             canvas.set_draw_color(color.to_rgb());
