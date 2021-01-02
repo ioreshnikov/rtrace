@@ -94,26 +94,25 @@ impl Ray {
     }
 }
 
+use sdl2;
+use sdl2::event::Event;
+
 fn main() {
-    let og = Vector::new(0.0, 0.0, 0.0);
+    let sdl_context = sdl2::init().unwrap();
+    let video_subsystem = sdl_context.video().unwrap();
 
-    let ex = Vector::new(1.0, 0.0, 0.0);
-    let ey = Vector::new(0.0, 1.0, 0.0);
-    let ez = Vector::new(0.0, 0.0, 1.0);
+    let window = video_subsystem.window("", 800, 600)
+        .position_centered()
+        .build()
+        .unwrap();
 
-    println!("{:?}", ex);
-    println!("{:?}", ex + ey);
-    println!("{:?}", ex + ey + ez);
-    println!("{:?}", 2.0 * ez);
-    println!("{:?}", ez * 2.0);
-    println!("{:?}", ez / 2.0);
-
-    println!("{:?}", ex.norm());
-    println!("{:?}", ex.dot(&ex));
-    println!("{:?}", (ex + ey + ez).unit());
-
-    let ray = Ray::new(og, ez);
-    println!("{:?}", ray);
-
-    println!("Hello, world!");
+    let mut event_pump = sdl_context.event_pump().unwrap();
+    'main: loop {
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit {..} => break 'main,
+                _ => {}
+            }
+        }
+    }
 }
