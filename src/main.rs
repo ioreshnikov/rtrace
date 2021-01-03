@@ -1,4 +1,5 @@
 use std::ops::Add;
+use std::ops::AddAssign;
 use std::ops::Div;
 use std::ops::Mul;
 use std::ops::Sub;
@@ -38,6 +39,14 @@ impl Add<Vector> for Vector {
             y: self.y + other.y,
             z: self.z + other.z
         }
+    }
+}
+
+impl AddAssign<Vector> for Vector {
+    fn add_assign(&mut self, other: Self) {
+        self.x += other.x;
+        self.y += other.y;
+        self.z += other.z;
     }
 }
 
@@ -199,19 +208,17 @@ const SPHERE: Sphere = Sphere {
     radius: 0.5
 };
 
-type Color = Vector;
-
 /// Ray tracing algorithm.
-pub fn background_color(ray: &Ray) -> Color {
+pub fn background_color(ray: &Ray) -> Vector {
     let y = ray.direction.y;
     let t = 0.5 * (y + 1.0);
-    let blue  = Color {x: 0.5, y: 0.7, z: 1.0};
-    let white = Color {x: 1.0, y: 1.0, z: 1.0};
+    let blue  = Vector {x: 0.5, y: 0.7, z: 1.0};
+    let white = Vector {x: 1.0, y: 1.0, z: 1.0};
 
     t * white + (1.0 - t) * blue
 }
 
-pub fn ray_color(ray: &Ray) -> Color {
+pub fn ray_color(ray: &Ray) -> Vector {
     let hit = SPHERE.hit(ray);
 
     if !hit.is_none() {
@@ -222,14 +229,17 @@ pub fn ray_color(ray: &Ray) -> Color {
 }
 
 /// Window and viewport related setup.
-const WINDOW_WIDTH:  u32 = 800;
-const WINDOW_HEIGHT: u32 = 800;
+const IMAGE_WIDTH:  usize = 800;
+const IMAGE_HEIGHT: usize = 800;
 
-const ASPECT_RATIO: f32 = WINDOW_WIDTH as f32 / WINDOW_HEIGHT as f32;
+const ASPECT_RATIO: f32 = IMAGE_WIDTH as f32 / IMAGE_HEIGHT as f32;
 
 const VIEWPORT_WIDTH: f32 = 2.0;
 const VIEWPORT_HEIGHT: f32 = VIEWPORT_WIDTH / ASPECT_RATIO;
 const VIEWPORT_FOCUS_DISTANCE: f32 = 1.0;
+
+/// Rendering algorithm parameters.
+const SAMPLES_PER_PIXEL: u32 = 1;
 
 /// Basic geometric constants.
 const OG: Vector = Vector{x: 0.0, y: 0.0, z: 0.0};
@@ -239,15 +249,27 @@ const EZ: Vector = Vector{x: 0.0, y: 0.0, z: 1.0};
 
 /// Auxiliary functions.
 use sdl2;
+use sdl2::pixels::Color;
+use sdl2::event::Event;
+use sdl2::rect::Point;
+use sdl2::render::{Canvas, RenderTarget};
 
-impl Color {
-    pub fn to_rgb(self) -> sdl2::pixels::Color {
-        sdl2::pixels::Color::RGB(
-            (255.0 * self.x) as u8,
-            (255.0 * self.y) as u8,
-            (255.0 * self.z) as u8
-        )
+pub fn to_rgb(vec: Vector) -> Color {
+    Color::RGB(
+        (255.0 * vec.x) as u8,
+        (255.0 * vec.y) as u8,
+        (255.0 * vec.z) as u8
+    )
+}
+
+pub fn render_image<T: RenderTarget>(image: &[[Vector; IMAGE_WIDTH]; IMAGE_HEIGHT], canvas: &mut Canvas<T>) {
+    for i in 0 .. IMAGE_HEIGHT {
+        for j in 0 .. IMAGE_WIDTH {
+            canvas.set_draw_color(to_rgb(image[i][j]));
+            canvas.draw_point(Point::new(j as i32, i as i32)).unwrap();
+        }
     }
+    canvas.present();
 }
 
 fn main() {
@@ -255,7 +277,7 @@ fn main() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
-    let window = video_subsystem.window("", WINDOW_WIDTH, WINDOW_HEIGHT)
+    let window = video_subsystem.window("", IMAGE_WIDTH as u32, IMAGE_HEIGHT as u32)
         .position_centered()
         .build()
         .unwrap();
@@ -265,13 +287,15 @@ fn main() {
         .build()
         .unwrap();
 
+    let mut image = [[Vector{x: 0.0, y: 0.0, z: 0.0}; IMAGE_WIDTH]; IMAGE_HEIGHT];
+
     // For each pixel.
-    for i in 0 .. WINDOW_HEIGHT {
-        for j in 0 .. WINDOW_WIDTH {
+    for i in 0 .. IMAGE_HEIGHT {
+        for j in 0 .. IMAGE_WIDTH {
             // Calculate coordinates of the point relative to the
             // viewport.
-            let u = j as f32 / (WINDOW_WIDTH  as f32 - 1.0);
-            let v = i as f32 / (WINDOW_HEIGHT as f32 - 1.0);
+            let u = j as f32 / (IMAGE_WIDTH  as f32 - 1.0);
+            let v = i as f32 / (IMAGE_HEIGHT as f32 - 1.0);
 
             let x = (u - 0.5) * VIEWPORT_WIDTH;
             let y = (v - 0.5) * VIEWPORT_HEIGHT;
@@ -283,18 +307,16 @@ fn main() {
             // Perform ray tracing and see what color the ray should
             // be.
             let color = ray_color(&ray);
-
-            canvas.set_draw_color(color.to_rgb());
-            canvas.draw_point(sdl2::rect::Point::new(j as i32, i as i32)).unwrap();
+            image[i][j] += color / (SAMPLES_PER_PIXEL as f32);
         }
     }
-    canvas.present();
+    render_image(&image, &mut canvas);
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     'main: loop {
         for event in event_pump.poll_iter() {
             match event {
-                sdl2::event::Event::Quit {..} => break 'main,
+                Event::Quit {..} => break 'main,
                 _ => {}
             }
         }
