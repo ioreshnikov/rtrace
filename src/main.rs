@@ -1,10 +1,13 @@
+/// Basic vector arithmetics.
+
 use std::ops::Add;
 use std::ops::AddAssign;
 use std::ops::Div;
 use std::ops::Mul;
 use std::ops::Sub;
 
-/// Basic vector arithmetics.
+use rand;
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Vector {
     pub x: f32,
@@ -27,6 +30,22 @@ impl Vector {
 
     pub fn unit(self) -> Self {
         self / self.norm()
+    }
+
+    pub fn random_unit() -> Self {
+        loop {
+            let v = Vector{
+                x: rand::random::<f32>(),
+                y: rand::random::<f32>(),
+                z: rand::random::<f32>()
+            };
+
+            if v.sqnorm() >= 1.0 {
+                continue
+            }
+
+            return v.unit();
+        }
     }
 }
 
@@ -215,7 +234,7 @@ pub fn background_color(ray: &Ray) -> Vector {
     let blue  = Vector {x: 0.5, y: 0.7, z: 1.0};
     let white = Vector {x: 1.0, y: 1.0, z: 1.0};
 
-    t * white + (1.0 - t) * blue
+    (1.0 - t) * white + t * blue
 }
 
 pub fn ray_color(ray: &Ray) -> Vector {
@@ -248,8 +267,6 @@ const EY: Vector = Vector{x: 0.0, y: 1.0, z: 0.0};
 const EZ: Vector = Vector{x: 0.0, y: 0.0, z: 1.0};
 
 /// Auxiliary functions.
-use rand;
-
 use sdl2;
 use sdl2::pixels::Color;
 use sdl2::event::Event;
@@ -269,7 +286,7 @@ pub fn render_image<T: RenderTarget>(image: &[[Vector; IMAGE_WIDTH]; IMAGE_HEIGH
         for j in 0 .. IMAGE_WIDTH {
             let vector = image[i][j] / (iter as f32 + 1.0);
             canvas.set_draw_color(to_rgb(vector));
-            canvas.draw_point(Point::new(j as i32, i as i32)).unwrap();
+            canvas.draw_point(Point::new(j as i32, IMAGE_HEIGHT as i32 - i as i32)).unwrap();
         }
     }
     canvas.present();
