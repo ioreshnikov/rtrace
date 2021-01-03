@@ -239,14 +239,11 @@ impl World {
 
 impl Hittable for World {
     fn hit(&self, ray: &Ray) -> Option<Hit> {
-        let mut hits: Vec<Hit> = Vec::new();
-
-        for object in self.objects.iter() {
-            let hit = object.hit(&ray);
-            if hit.is_some() {
-                hits.push(hit.unwrap());
-            }
-        }
+        let hits: Vec<Hit> = self.objects.iter()
+            .map(|obj| obj.hit(&ray))
+            .filter(|hit| hit.is_some())
+            .map(|hit| hit.unwrap())
+            .collect();
 
         if hits.is_empty() {
             return None
@@ -337,7 +334,7 @@ fn main() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
-    let window = video_subsystem.window("", IMAGE_WIDTH as u32, IMAGE_HEIGHT as u32)
+    let window = video_subsystem.window("Raytracer Demo", IMAGE_WIDTH as u32, IMAGE_HEIGHT as u32)
         .position_centered()
         .build()
         .unwrap();
