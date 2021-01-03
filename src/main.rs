@@ -239,7 +239,7 @@ const VIEWPORT_HEIGHT: f32 = VIEWPORT_WIDTH / ASPECT_RATIO;
 const VIEWPORT_FOCUS_DISTANCE: f32 = 1.0;
 
 /// Rendering algorithm parameters.
-const SAMPLES_PER_PIXEL: u32 = 1;
+const SAMPLES_PER_PIXEL: u32 = 10;
 
 /// Basic geometric constants.
 const OG: Vector = Vector{x: 0.0, y: 0.0, z: 0.0};
@@ -248,6 +248,8 @@ const EY: Vector = Vector{x: 0.0, y: 1.0, z: 0.0};
 const EZ: Vector = Vector{x: 0.0, y: 0.0, z: 1.0};
 
 /// Auxiliary functions.
+use rand;
+
 use sdl2;
 use sdl2::pixels::Color;
 use sdl2::event::Event;
@@ -262,10 +264,11 @@ pub fn to_rgb(vec: Vector) -> Color {
     )
 }
 
-pub fn render_image<T: RenderTarget>(image: &[[Vector; IMAGE_WIDTH]; IMAGE_HEIGHT], canvas: &mut Canvas<T>) {
+pub fn render_image<T: RenderTarget>(image: &[[Vector; IMAGE_WIDTH]; IMAGE_HEIGHT], canvas: &mut Canvas<T>, iter: u32) {
     for i in 0 .. IMAGE_HEIGHT {
         for j in 0 .. IMAGE_WIDTH {
-            canvas.set_draw_color(to_rgb(image[i][j]));
+            let vector = image[i][j] / (iter as f32 + 1.0);
+            canvas.set_draw_color(to_rgb(vector));
             canvas.draw_point(Point::new(j as i32, i as i32)).unwrap();
         }
     }
@@ -287,30 +290,34 @@ fn main() {
         .build()
         .unwrap();
 
-    let mut image = [[Vector{x: 0.0, y: 0.0, z: 0.0}; IMAGE_WIDTH]; IMAGE_HEIGHT];
+    let black = Vector{x: 0.0, y: 0.0, z: 0.0};
+    let mut image = [[black; IMAGE_WIDTH]; IMAGE_HEIGHT];
 
-    // For each pixel.
-    for i in 0 .. IMAGE_HEIGHT {
-        for j in 0 .. IMAGE_WIDTH {
-            // Calculate coordinates of the point relative to the
-            // viewport.
-            let u = j as f32 / (IMAGE_WIDTH  as f32 - 1.0);
-            let v = i as f32 / (IMAGE_HEIGHT as f32 - 1.0);
+    // For each pixel we cast a ray.
+    for n in 0 .. SAMPLES_PER_PIXEL {
+        for i in 0 .. IMAGE_HEIGHT {
+            for j in 0 .. IMAGE_WIDTH {
+                // Calculate coordinates of the point relative to the
+                // viewport.
+                let u = (j as f32 + rand::random::<f32>()) / (IMAGE_WIDTH  as f32 - 1.0);
+                let v = (i as f32 + rand::random::<f32>()) / (IMAGE_HEIGHT as f32 - 1.0);
 
-            let x = (u - 0.5) * VIEWPORT_WIDTH;
-            let y = (v - 0.5) * VIEWPORT_HEIGHT;
+                let x = (u - 0.5) * VIEWPORT_WIDTH;
+                let y = (v - 0.5) * VIEWPORT_HEIGHT;
 
-            // Construct a ray going through the point on the
-            // viewport.
-            let ray = Ray::new(OG, x * EX + y * EY - VIEWPORT_FOCUS_DISTANCE * EZ - OG);
+                // Construct a ray going through the point on the
+                // viewport.
+                let ray = Ray::new(OG, x * EX + y * EY - VIEWPORT_FOCUS_DISTANCE * EZ - OG);
 
-            // Perform ray tracing and see what color the ray should
-            // be.
-            let color = ray_color(&ray);
-            image[i][j] += color / (SAMPLES_PER_PIXEL as f32);
+                // Perform ray tracing and see what color the ray should
+                // be.
+                let color = ray_color(&ray);
+                image[i][j] += color;
+            }
         }
+        println!("{:?}", n);
+        render_image(&image, &mut canvas, n);
     }
-    render_image(&image, &mut canvas);
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     'main: loop {
