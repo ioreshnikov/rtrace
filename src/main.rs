@@ -284,8 +284,8 @@ pub fn ray_color(ray: &Ray, world: &World, depth: u8) -> Vector {
 }
 
 /// Window and viewport related setup.
-const IMAGE_WIDTH:  usize = 800;
-const IMAGE_HEIGHT: usize = 800;
+const IMAGE_WIDTH:  usize = 500;
+const IMAGE_HEIGHT: usize = 500;
 
 const ASPECT_RATIO: f32 = IMAGE_WIDTH as f32 / IMAGE_HEIGHT as f32;
 
@@ -295,7 +295,7 @@ const VIEWPORT_FOCUS_DISTANCE: f32 = 1.0;
 
 /// Rendering algorithm parameters.
 const SAMPLES_PER_PIXEL: u32 = 100;
-const RECURSION_DEPTH: u8 = 8;
+const RECURSION_DEPTH: u8 = 7;
 
 /// Basic geometric constants.
 const OG: Vector = Vector{x: 0.0, y: 0.0, z: 0.0};
@@ -318,10 +318,10 @@ pub fn to_rgb(vec: Vector) -> Color {
     )
 }
 
-pub fn render_image<T: RenderTarget>(image: &[[Vector; IMAGE_WIDTH]; IMAGE_HEIGHT], canvas: &mut Canvas<T>, iter: u32) {
+pub fn render_image<T: RenderTarget>(image: &[[Vector; IMAGE_WIDTH]; IMAGE_HEIGHT], canvas: &mut Canvas<T>) {
     for i in 0 .. IMAGE_HEIGHT {
         for j in 0 .. IMAGE_WIDTH {
-            let vector = image[i][j] / (iter as f32 + 1.0);
+            let vector = image[i][j] / (SAMPLES_PER_PIXEL as f32);
             canvas.set_draw_color(to_rgb(vector));
             canvas.draw_point(Point::new(j as i32, IMAGE_HEIGHT as i32 - i as i32)).unwrap();
         }
@@ -384,7 +384,7 @@ fn main() {
             }
         }
         println!("{:?}", n);
-        render_image(&image, &mut canvas, n);
+        render_image(&image, &mut canvas);
     }
 
     let mut event_pump = sdl_context.event_pump().unwrap();
