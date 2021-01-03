@@ -16,12 +16,12 @@ pub struct Vector {
 }
 
 impl Vector {
-    pub fn dot(self, other: &Self) -> f32 {
+    pub fn dot(self, other: Self) -> f32 {
         self.x * other.x + self.y * other.y + self.z * other.z
     }
 
     pub fn sqnorm(self) -> f32 {
-        self.dot(&self)
+        self.dot(self)
     }
 
     pub fn norm(self) -> f32 {
@@ -162,6 +162,7 @@ impl Ray {
 }
 
 /// Geometry
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Hit {
     pub t: f32,    // Distance along the ray to the intersection with the shape
     pub p: Vector, // Cartesian coordinates of the intersection
@@ -179,20 +180,21 @@ impl Hit {
 }
 
 pub trait Hittable {
-    fn hit(self, ray: &Ray) -> Option<Hit>;
+    fn hit(&self, ray: &Ray) -> Option<Hit>;
 }
 
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Sphere {
     pub center: Vector,
     pub radius: f32
 }
 
 impl Hittable for Sphere {
-    fn hit(self, ray: &Ray) -> Option<Hit> {
+    fn hit(&self, ray: &Ray) -> Option<Hit> {
         let eps = 1E-3;
 
         let o = ray.origin - self.center;
-        let b = ray.direction.dot(&o);
+        let b = ray.direction.dot(o);
         let c = o.sqnorm() - self.radius * self.radius;
         let discriminant = b * b - c;
 
@@ -217,17 +219,46 @@ impl Hittable for Sphere {
         };
 
         let p = ray.at(t);
-        let n = p - SPHERE.center;
+        let n = p - self.center;
 
         Some(Hit::new(t, p, n))
     }
 }
 
-// An example sphere.
-const SPHERE: Sphere = Sphere {
-    center: Vector {x: 0.0, y: 0.0, z: -1.0},
-    radius: 0.5
-};
+pub struct World {
+    pub objects: Vec<Box<dyn Hittable>>
+}
+
+impl World {
+    pub fn new() -> World {
+        World {
+            objects: vec![]
+        }
+    }
+}
+
+impl Hittable for World {
+    fn hit(&self, ray: &Ray) -> Option<Hit> {
+        let mut hits: Vec<Hit> = Vec::new();
+
+        for object in self.objects.iter() {
+            let hit = object.hit(&ray);
+            if hit.is_some() {
+                hits.push(hit.unwrap());
+            }
+        }
+
+        if hits.is_empty() {
+            return None
+        }
+
+        let nearest_hit = hits.iter().fold(hits[0], |a, b| {
+            if a.t > b.t { *b } else { a }
+        });
+
+        return Some(nearest_hit);
+    }
+}
 
 /// Ray tracing algorithm.
 pub fn background_color(ray: &Ray) -> Vector {
@@ -239,17 +270,17 @@ pub fn background_color(ray: &Ray) -> Vector {
     (1.0 - t) * white + t * blue
 }
 
-pub fn ray_color(ray: &Ray, depth: u8) -> Vector {
-    let hit = SPHERE.hit(ray);
-
+pub fn ray_color(ray: &Ray, world: &World, depth: u8) -> Vector {
     if depth == 0 {
         return Vector {x: 0.0, y: 0.0, z: 0.0};
     }
 
+    let hit = world.hit(ray);
+
     if !hit.is_none() {
         let h = hit.unwrap();
         let d = h.n + Vector::random_unit();
-        return 0.5 * ray_color(&Ray{origin: h.p, direction: d}, depth - 1);
+        return 0.5 * ray_color(&Ray{origin: h.p, direction: d}, world, depth - 1);
     }
 
     background_color(ray)
@@ -266,7 +297,7 @@ const VIEWPORT_HEIGHT: f32 = VIEWPORT_WIDTH / ASPECT_RATIO;
 const VIEWPORT_FOCUS_DISTANCE: f32 = 1.0;
 
 /// Rendering algorithm parameters.
-const SAMPLES_PER_PIXEL: u32 = 10;
+const SAMPLES_PER_PIXEL: u32 = 100;
 const RECURSION_DEPTH: u8 = 8;
 
 /// Basic geometric constants.
@@ -319,6 +350,20 @@ fn main() {
     let black = Vector{x: 0.0, y: 0.0, z: 0.0};
     let mut image = [[black; IMAGE_WIDTH]; IMAGE_HEIGHT];
 
+    let mut world = World::new();
+    world.objects.push(Box::new(
+        Sphere{
+            center: Vector{ x: 0.0, y: 0.0, z: -1.0},
+            radius: 0.5
+        }
+    ));
+    world.objects.push(Box::new(
+        Sphere{
+            center: Vector{ x: 0.0, y: -100.5, z: -1.0},
+            radius: 100.0
+        }
+    ));
+
     // For each pixel we cast a ray.
     for n in 0 .. SAMPLES_PER_PIXEL {
         for i in 0 .. IMAGE_HEIGHT {
@@ -337,7 +382,7 @@ fn main() {
 
                 // Perform ray tracing and see what color the ray should
                 // be.
-                let color = ray_color(&ray, RECURSION_DEPTH);
+                let color = ray_color(&ray, &world, RECURSION_DEPTH);
                 image[i][j] += color;
             }
         }
