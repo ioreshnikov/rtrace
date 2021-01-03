@@ -189,6 +189,8 @@ pub struct Sphere {
 
 impl Hittable for Sphere {
     fn hit(self, ray: &Ray) -> Option<Hit> {
+        let eps = 1E-3;
+
         let o = ray.origin - self.center;
         let b = ray.direction.dot(&o);
         let c = o.sqnorm() - self.radius * self.radius;
@@ -203,11 +205,11 @@ impl Hittable for Sphere {
         let t1 = - b + d;
         let t2 = - b - d;
 
-        if t1 < 0.0 && t2 < 0.0 {
+        if t1 < eps && t2 < eps {
             return None;
         }
 
-        let t: f32 = match (t1 > 0.0, t2 > 0.0) {
+        let t: f32 = match (t1 >= eps, t2 >= eps) {
             (false, true) => t2,
             (true, false) => t1,
             (true, true)  => t1.min(t2),
@@ -237,11 +239,17 @@ pub fn background_color(ray: &Ray) -> Vector {
     (1.0 - t) * white + t * blue
 }
 
-pub fn ray_color(ray: &Ray) -> Vector {
+pub fn ray_color(ray: &Ray, depth: u8) -> Vector {
     let hit = SPHERE.hit(ray);
 
+    if depth == 0 {
+        return Vector {x: 0.0, y: 0.0, z: 0.0};
+    }
+
     if !hit.is_none() {
-        return 0.5 * (hit.unwrap().n + 1.0);
+        let h = hit.unwrap();
+        let d = h.n + Vector::random_unit();
+        return 0.5 * ray_color(&Ray{origin: h.p, direction: d}, depth - 1);
     }
 
     background_color(ray)
@@ -259,6 +267,7 @@ const VIEWPORT_FOCUS_DISTANCE: f32 = 1.0;
 
 /// Rendering algorithm parameters.
 const SAMPLES_PER_PIXEL: u32 = 10;
+const RECURSION_DEPTH: u8 = 8;
 
 /// Basic geometric constants.
 const OG: Vector = Vector{x: 0.0, y: 0.0, z: 0.0};
@@ -275,9 +284,9 @@ use sdl2::render::{Canvas, RenderTarget};
 
 pub fn to_rgb(vec: Vector) -> Color {
     Color::RGB(
-        (255.0 * vec.x) as u8,
-        (255.0 * vec.y) as u8,
-        (255.0 * vec.z) as u8
+        (255.0 * vec.x.sqrt()) as u8,
+        (255.0 * vec.y.sqrt()) as u8,
+        (255.0 * vec.z.sqrt()) as u8
     )
 }
 
@@ -328,7 +337,7 @@ fn main() {
 
                 // Perform ray tracing and see what color the ray should
                 // be.
-                let color = ray_color(&ray);
+                let color = ray_color(&ray, RECURSION_DEPTH);
                 image[i][j] += color;
             }
         }
